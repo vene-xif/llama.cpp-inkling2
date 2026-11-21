@@ -9,10 +9,14 @@
 >   and the KQ mask is folded into the relative-position bias table: about 2.6 GiB at 200k, same results
 >   (bit-identical on CPU).
 > - Changes are in `src/llama-graph.*`, `src/llama-kv-cache.*` and `src/models/inkling2.cpp` / `models.h`.
+> - Scheduler fix in `ggml/src/ggml-backend.cpp`: with experts in RAM (`--n-cpu-moe`), a weight used by several
+>   graph splits was uploaded only for the first one, and only the experts that split routed to. Inkling-2-Mini's
+>   looped layers reuse their weights, so later passes read garbage (wrong output from the second loop pass on).
+>   Now each split that reads a RAM-resident weight uploads it again.
 >
-> Status: tested on CPU and CUDA (RTX 3090). **Vulkan output is wrong for this model** (also without this fix;
-> FP16 overflow in the MoE matmuls is suspected). Build as usual, e.g. `cmake -B build -DGGML_CUDA=ON && cmake --build build -j`.
-> No support, no guarantees.
+> Status: tested on CPU, CUDA (RTX 3090, all weights on GPU) and Vulkan (RX 6900 XT, experts in RAM, with and
+> without `--moe-cache-mib`). Build as usual, e.g. `cmake -B build -DGGML_CUDA=ON && cmake --build build -j`
+> (or `-DGGML_VULKAN=ON`). No support, no guarantees.
 
 ---
 

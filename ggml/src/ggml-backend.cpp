@@ -1262,6 +1262,17 @@ struct ggml_backend_sched {
 #define tensor_id_copy(id, backend_id, copy_id) sched->hv_tensor_copies[(id) * sched->n_backends * sched->n_copies + (backend_id) * sched->n_copies + (copy_id)]
 #define tensor_copy(tensor, backend_id, copy_id) tensor_id_copy(hash_id(tensor), backend_id, copy_id)
 
+static bool ggml_backend_sched_is_host_weight(const struct ggml_tensor * t);
+
+static bool ggml_backend_sched_split_has_input(const struct ggml_backend_sched_split * split, const struct ggml_tensor * t) {
+    for (int i = 0; i < split->n_inputs; i++) {
+        if (split->inputs[i] == t) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void ggml_backend_sched_split_inputs_grow(struct ggml_backend_sched_split * split) {
     int new_cap = GGML_SCHED_MAX_SPLIT_INPUTS;
     if (split->inputs_capacity > 0) {
@@ -1806,6 +1817,14 @@ void ggml_backend_sched_split_graph(ggml_backend_sched_t sched, struct ggml_cgra
                             tensor_id_copy(src_id, cur_backend_id, c) = tensor_copy;
                             SET_CAUSE(tensor_copy, "4.cpy");
                         }
+                        int n_inputs = split->n_inputs++;
+                        if (n_inputs >= split->inputs_capacity) {
+                            ggml_backend_sched_split_inputs_grow(split);
+                        }
+                        split->inputs[n_inputs] = src;
+                    } else if (ggml_backend_sched_is_host_weight(src) && !ggml_backend_sched_split_has_input(split, src)) {
+                        // a weight in host memory that an earlier split also reads (e.g. the shared layers of a looped model):
+                        // copy it again for this split, as the copy callback may copy only the experts of the first node of the split
                         int n_inputs = split->n_inputs++;
                         if (n_inputs >= split->inputs_capacity) {
                             ggml_backend_sched_split_inputs_grow(split);
